@@ -43,6 +43,7 @@ class MainActivity : ComponentActivity() {
 
     private val viewModel: WeatherViewModel by viewModels()
 
+    @OptIn(ExperimentalMaterial3Api::class) // ExposedDropdownMenuBox için gerekli
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
@@ -50,6 +51,7 @@ class MainActivity : ComponentActivity() {
                 val uiState by viewModel.uiState.collectAsState()
                 val citySuggestions by viewModel.citySuggestions.collectAsState()
                 var city by remember { mutableStateOf("") }
+                var expanded by remember { mutableStateOf(false) }
                 val context = LocalContext.current
                 val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
 
@@ -64,6 +66,8 @@ class MainActivity : ComponentActivity() {
                     }
                 )
 
+                expanded = citySuggestions.isNotEmpty() && city.isNotBlank()
+
                 WeatherScreen(
                     uiState = uiState,
                     citySuggestions = citySuggestions,
@@ -75,14 +79,17 @@ class MainActivity : ComponentActivity() {
                     onSearchClick = {
                         if (city.isNotBlank()) {
                             viewModel.getWeatherByCity(city)
+                            expanded = false
                         }
                     },
                     onSuggestionClick = { selectedCity ->
                         city = selectedCity.name
                         viewModel.clearSuggestions()
                         viewModel.getWeatherByLocation(selectedCity.lat, selectedCity.lon)
+                        expanded = false
                     },
                     onLocationClick = {
+                        expanded = false
                         when (PackageManager.PERMISSION_GRANTED) {
                             ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) -> {
                                 getCurrentLocation(fusedLocationClient, { lat, lon -> viewModel.getWeatherByLocation(lat, lon) }, {})
@@ -91,6 +98,10 @@ class MainActivity : ComponentActivity() {
                                 locationPermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
                             }
                         }
+                    },
+                    expanded = expanded,
+                    onExpandedChange = {
+                        expanded = !expanded
                     }
                 )
             }
@@ -99,6 +110,7 @@ class MainActivity : ComponentActivity() {
 }
 
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun WeatherScreen(
     uiState: WeatherUiState,
@@ -107,7 +119,9 @@ fun WeatherScreen(
     onCityNameChange: (String) -> Unit,
     onSearchClick: () -> Unit,
     onLocationClick: () -> Unit,
-    onSuggestionClick: (GeocodingResponseItem) -> Unit
+    onSuggestionClick: (GeocodingResponseItem) -> Unit,
+    expanded: Boolean,
+    onExpandedChange: (Boolean) -> Unit
 ) {
     Box(
         modifier = Modifier
@@ -124,43 +138,38 @@ fun WeatherScreen(
                 .padding(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Box {
-                Column {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        OutlinedTextField(
-                            value = cityName,
-                            onValueChange = onCityNameChange,
-                            label = { Text("Şehir ara...") },
-                            modifier = Modifier.weight(1f)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Button(onClick = onSearchClick) {
-                            Text("Ara")
-                        }
+            ExposedDropdownMenuBox(
+                expanded = expanded,
+                onExpandedChange = onExpandedChange
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .menuAnchor(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    OutlinedTextField(
+                        value = cityName,
+                        onValueChange = onCityNameChange,
+                        label = { Text("Şehir ara...") },
+                        modifier = Modifier.weight(1f)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Button(onClick = onSearchClick) {
+                        Text("Ara")
                     }
+                }
 
-                    if (citySuggestions.isNotEmpty()) {
-                        LazyColumn(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(top = 8.dp)
-                                .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(8.dp))
-                        ) {
-                            items(citySuggestions) { suggestion ->
-                                val suggestionText = "${suggestion.name}, ${suggestion.country}"
-                                Text(
-                                    text = suggestionText,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable { onSuggestionClick(suggestion) }
-                                        .padding(16.dp)
-                                )
-                                HorizontalDivider(thickness = 0.5.dp)
-                            }
-                        }
+                ExposedDropdownMenu(
+                    expanded = expanded,
+                    onDismissRequest = { onExpandedChange(false) }
+                ) {
+                    citySuggestions.forEach { suggestion ->
+                        val suggestionText = "${suggestion.name}, ${suggestion.country}"
+                        DropdownMenuItem(
+                            text = { Text(suggestionText) },
+                            onClick = { onSuggestionClick(suggestion) }
+                        )
                     }
                 }
             }
@@ -258,6 +267,7 @@ fun WeatherDetails(data: WeatherResponse) {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Preview(name = "Başarılı Durum Önizlemesi", showBackground = true)
 @Composable
 fun WeatherScreenSuccessPreview() {
@@ -275,11 +285,14 @@ fun WeatherScreenSuccessPreview() {
             onCityNameChange = {},
             onSearchClick = {},
             onLocationClick = {},
-            onSuggestionClick = {}
+            onSuggestionClick = {},
+            expanded = false,
+            onExpandedChange = {}
         )
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Preview(name = "Yükleniyor Durumu Önizlemesi", showBackground = true)
 @Composable
 fun WeatherScreenLoadingPreview() {
@@ -291,11 +304,14 @@ fun WeatherScreenLoadingPreview() {
             onCityNameChange = {},
             onSearchClick = {},
             onLocationClick = {},
-            onSuggestionClick = {}
+            onSuggestionClick = {},
+            expanded = false,
+            onExpandedChange = {}
         )
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Preview(name = "Hata Durumu Önizlemesi", showBackground = true)
 @Composable
 fun WeatherScreenErrorPreview() {
@@ -307,7 +323,9 @@ fun WeatherScreenErrorPreview() {
             onCityNameChange = {},
             onSearchClick = {},
             onLocationClick = {},
-            onSuggestionClick = {}
+            onSuggestionClick = {},
+            expanded = false,
+            onExpandedChange = {}
         )
     }
 }
